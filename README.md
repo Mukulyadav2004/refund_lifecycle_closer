@@ -28,13 +28,13 @@ repo never claims a four-leg lifecycle.
 |---|---|---|
 | 1 Skeleton, config, calendar, money, entities | `config.py` `calendar_utils.py` `money.py` `ids.py` `entities.py` | **done** |
 | 2 Synthetic data generator | `generate.py` `cli.py` | **done — 380 refunds, 52 seeded failures** |
-| 3 Loader, invariants, closure engine | `loader.py` `invariants.py` `engine.py` | to build |
+| 3 Loader, invariants, closure engine | `loader.py` `invariants.py` `engine.py` | **done — all 380 seeded labels reproduced** |
 | 4 Leakage, timing, leg evidence | `attributes.py` | to build |
 | 5 Metrics vs ground truth | `evaluate.py` | to build |
 | 6 Explanation layer | `explain.py` | to build |
 | 7 Report writer | `report.py` | to build |
 
-107 tests passing. `SPEC.md` is the algorithm. `CLAUDE.md` is the working contract — read it before
+181 tests passing. `SPEC.md` is the algorithm. `CLAUDE.md` is the working contract — read it before
 writing code.
 
 ## Run
@@ -51,8 +51,8 @@ make eval        # metrics, confusion matrix, report.md     (step 5)
 
 **Everything is synthetic and generated locally by `generate.py`.** No Razorpay
 account, no API keys, no network. The brief asks for a 50+ record batch of
-synthetic data; this generates ~600 payments and ~380 refunds from a fixed seed,
-so any run is reproducible.
+synthetic data; this generates 3,400 payments and 380 refunds from a fixed seed,
+so any run is byte-for-byte reproducible.
 
 What makes it credible is not that it came from Razorpay, but that **every field
 is shaped exactly like the documented API response**, so a judge can trace any

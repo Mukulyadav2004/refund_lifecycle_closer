@@ -175,6 +175,7 @@ class SyntheticDataGenerator:
         self._step4_seed_scenarios()
         self._recompute_parent_totals()
         recon, settlements = self._step5_settlements_and_recon()
+        self._label_immature(recon)
         ground_truth = self._step6_ground_truth()
         manifest = self._manifest(recon, settlements)
         self._self_check(recon, settlements)
@@ -807,7 +808,11 @@ class SyntheticDataGenerator:
             if not plan.emit_recon or r.status != "processed" or r.payment_id is None:
                 continue
             created_d = to_ist_date(r.created_at)
-            lag = plan.lag_wd if plan.lag_wd is not None else self._sample_lag()
+            lag = (
+                plan.lag_wd
+                if plan.lag_wd is not None
+                else self._effective_lag(created_d, self._sample_lag())
+            )
             for i in range(plan.recon_rows):
                 settled_d = self.cal.add_working_days(created_d, lag + i)
                 if settled_d > self.as_of:
@@ -864,6 +869,96 @@ class SyntheticDataGenerator:
                            utr=utr, created_at=ist_unix(day, 6))
             )
         return settlements
+
+    def _effective_lag(self, created_d: date, lag: int) -> int:
+        """Pull a sampled deduction lag back inside the observation window.
+
+        A refund whose sampled lag settles after `as_of` is in flight, which is
+        honest only while the maturity gate has not passed. Past the gate the
+        same record is indistinguishable from NEVER_DEDUCTED, and the generator
+        would be writing a label no engine could earn. When that happens, settle
+        it at the latest lag that still lands on or before `as_of`.
+
+        This is the tension between `refund_deduction_lag_tail` (up to 4 working
+        days) and `settle_threshold_wd` (3): the tail can outrun the gate. Both
+        are assumptions, so neither is "wrong" — but the data must not sit in the
+        gap between them.
+        """
+        if self.cal.add_working_days(created_d, lag) <= self.as_of:
+            return lag
+        gate = self.cal.add_working_days(created_d, self.cfg.thresholds.settle_threshold_wd)
+        if self.as_of < gate:
+            return lag  # genuinely young, and provably so
+        for smaller in range(lag - 1, 0, -1):
+            if self.cal.add_working_days(created_d, smaller) <= self.as_of:
+                return smaller
+        return lag
+
+    # ----------------------------------------------------- step 5b: maturity
+
+    def _label_immature(self, recon: list[ReconRow]) -> None:
+        """Label refunds that had not matured by `as_of` (spec §6.4, §6.7).
+
+        Step 5 skips a recon row whose settlement date falls after `as_of`, and
+        `_set_arn` leaves `arn` null when the ARN would arrive after `as_of`.
+        Both correctly model an in-flight refund — but the plan still carried the
+        default `CLOSED_MATCHED`, which claims three verified legs for a refund
+        that has none. The label has to follow the facts the generator actually
+        emitted, not the intent it started with.
+
+        This reads only the generator's own output. It does not re-implement the
+        state machine: "did I write a recon row for this refund" and "did I give
+        it an ARN" are facts about this file, and the two assertions below fail
+        loudly if a threshold change ever makes them ambiguous.
+        """
+        emitted: dict[str, int] = {}
+        for row in recon:
+            if row.is_refund:
+                emitted[row.entity_id] = emitted.get(row.entity_id, 0) + 1
+
+        for plan in self.plans:
+            r = plan.refund
+            if r.status != "processed":
+                continue  # failed and pending refunds are labelled by their own scenarios
+            if plan.expected_state == REJECTED_INPUT:
+                continue  # stage 0 stops before the settlement and evidence legs
+
+            reasons: list[str] = []
+            if plan.emit_recon and emitted.get(r.id, 0) == 0:
+                settle_due = self.cal.add_working_days(
+                    plan.created_date, self.cfg.thresholds.settle_threshold_wd
+                )
+                assert self.as_of < settle_due, (
+                    f"{r.id}: no recon row was emitted, yet the maturity gate {settle_due} "
+                    f"has already passed as_of {self.as_of}. The record is indistinguishable "
+                    "from NEVER_DEDUCTED, so the label would be a coin toss. Raise "
+                    "settle_threshold_wd or shorten refund_deduction_lag_tail."
+                )
+                reasons.append("AWAITING_SETTLEMENT")
+
+            if r.arn is None and "ARN_OVERDUE" not in plan.expected_codes:
+                arn_due = self.cal.add_working_days(
+                    plan.created_date, self.cfg.thresholds.arn_threshold_wd
+                )
+                assert self.as_of < arn_due, (
+                    f"{r.id}: no ARN, and arn_due {arn_due} has already passed as_of "
+                    f"{self.as_of}. generator.arn_lag_wd_max must stay below "
+                    "thresholds.arn_threshold_wd, or unseeded refunds drift into ARN_OVERDUE."
+                )
+                reasons.append("AWAITING_ARN")
+
+            if not reasons:
+                continue
+            for reason in reasons:
+                if reason not in plan.expected_open:
+                    plan.expected_open.append(reason)
+            # Stage 6 precedence: codes outrank open reasons, so a seeded
+            # exception stays an exception and only gains the open reasons.
+            if plan.expected_state == CLOSED_MATCHED and not plan.expected_codes:
+                plan.expected_state = OPEN
+                if plan.scenario == "happy_path":
+                    plan.scenario = "open_immature"
+                    self.counts["open_immature"] = self.counts.get("open_immature", 0) + 1
 
     # ------------------------------------------------------------- step 6
 
@@ -946,8 +1041,13 @@ class SyntheticDataGenerator:
                 assert not rows, f"{plan.refund.id}: NEVER_DEDUCTED seed still emitted a row"
             if plan.scenario == "double_deducted":
                 assert len(rows) == 2, f"{plan.refund.id}: expected 2 rows, got {len(rows)}"
-            if plan.expected_state == OPEN:
-                assert not rows, f"{plan.refund.id}: OPEN seed must not have settled"
+            # OPEN is not a synonym for "unsettled": legs 3 and 4 are
+            # independent, so a refund can be deducted from settlement and still
+            # be waiting on its ARN. Only the settlement reason implies no row.
+            if "AWAITING_SETTLEMENT" in plan.expected_open:
+                assert not rows, (
+                    f"{plan.refund.id}: AWAITING_SETTLEMENT seed still emitted a recon row"
+                )
             if plan.refund.status == "failed":
                 assert not rows, f"{plan.refund.id}: a failed refund moves no money"
 

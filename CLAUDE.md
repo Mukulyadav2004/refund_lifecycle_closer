@@ -269,7 +269,7 @@ network.
 
 ## 11. What is already done
 
-Steps 1 and 2 are complete, with 107 tests passing. Run `make test` before
+Steps 1, 2 and 3 are complete, with 181 tests passing. Run `make test` before
 changing anything and again after.
 
 * Step 1: `config.py`, `calendar_utils.py`, `money.py`, `ids.py`, `entities.py`,
@@ -280,12 +280,27 @@ changing anything and again after.
   failures across all nine exception codes. Byte-for-byte deterministic.
 
 The generator self-checks before writing: settlement control totals must tie, no
-payment may be over-refunded, failed refunds must not settle, OPEN seeds must not
-have settled, and NEVER_DEDUCTED seeds must have no recon row. If a self-check
-fires, fix the generator — do not relax the check.
+payment may be over-refunded, failed refunds must not settle, `AWAITING_SETTLEMENT`
+seeds must have no recon row, and NEVER_DEDUCTED seeds must have no recon row. If
+a self-check fires, fix the generator — do not relax the check.
 
-Next: `loader.py` + `invariants.py` + `engine.py` (§5-§6), then `attributes.py`,
-`evaluate.py`, `explain.py`, `report.py`.
+* Step 3: `loader.py`, `invariants.py`, `engine.py` and `make close`. The engine
+  reproduces all 380 seeded labels exactly — state, exception codes, open reasons
+  and annotations — and asserts the identity equation on every run. Population at
+  seed 42: 279 CLOSED_MATCHED, 49 OPEN, 49 EXCEPTION, 3 REJECTED_INPUT.
+
+Two rules the engine added that are not in SPEC.md §6, both recorded in
+`docs/what-broke.md`:
+
+* `AMOUNT_MISMATCH` matches a refund to its RMA by `receipt == rma_id` first and
+  falls back to the spec's date-proximity rule only when no receipt resolves.
+  The date rule alone swaps expectations between two returns refunded out of
+  order and reports two mismatches where there are none.
+* `NO_RMA_MATCH` is informational and is listed in
+  `engine.INFORMATIONAL_ANNOTATIONS`. The generator does not seed it, so the
+  evaluator must not score it as a false positive.
+
+Next: `attributes.py` (§7), then `evaluate.py`, `explain.py`, `report.py`.
 
 Engine authors: `data/synthetic/ground_truth.json` exists and is readable. The
 engine must never open it. Only `evaluate.py` may.
