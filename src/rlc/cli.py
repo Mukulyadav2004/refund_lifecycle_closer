@@ -153,8 +153,129 @@ def cmd_close(args: argparse.Namespace) -> int:
 
 
 def cmd_evaluate(args: argparse.Namespace) -> int:
-    print("evaluate: not implemented yet — see SPEC.md §8.")
-    return 1
+    import json
+
+    from . import attributes, invariants
+    from .engine import close
+    from .evaluate import evaluate
+    from .loader import load_sources
+    from .money import format_inr
+
+    cfg = _cfg(args)
+    data_dir = Path(args.data) if args.data else None
+    sources = load_sources(cfg, data_dir)
+    integrity = invariants.run(sources, cfg)
+    run = close(sources, cfg, integrity=integrity)
+    totals = attributes.annotate(run, sources, cfg, integrity=integrity)
+    result = evaluate(run, sources, cfg, data_dir=data_dir, totals=totals)
+
+    def rule(title: str) -> None:
+        print(f"\n{title}\n{'-' * len(title)}")
+
+    print(f"evaluation — {result.n_in} refunds, as of {cfg.run.as_of}")
+
+    rule("identity (spec §8)")
+    counts = result.state_counts
+    print(f"  N_in {result.n_in} == "
+          f"{counts['CLOSED_MATCHED']} closed + {counts['OPEN']} open + "
+          f"{counts['EXCEPTION']} exception + {counts['REJECTED_INPUT']} rejected"
+          f"  ->  {'HOLDS' if result.identity_holds else 'BROKEN'}")
+    control = result.totals.control
+    print(f"  settlement control: Σdebit - Σamount {control.difference_paise} paise, "
+          f"unexplained {control.unexplained_paise} (must be 0)")
+
+    rule("headline rates (numerator/denominator beside every percentage)")
+    print(f"  match_rate_strict        {result.match_rate_strict}   "
+          "excludes OPEN and REJECTED_INPUT")
+    print(f"  match_rate_all           {result.match_rate_all}")
+    print(f"  state accuracy vs truth  {result.state_accuracy}")
+    print(f"  exact record agreement   {result.exact_record_agreement}   "
+          "state + codes + open reasons + annotations + timing")
+    print(f"  FALSE AUTO-MATCH RATE    {result.false_auto_match_rate}   "
+          "seeded failures closed anyway — the number that costs money")
+    print(f"    including OPEN         {result.false_auto_match_rate_incl_open}   "
+          "an open refund called closed says money landed when it has not")
+
+    rule("state confusion matrix (rows = expected, columns = engine)")
+    states = ["CLOSED_MATCHED", "OPEN", "EXCEPTION", "REJECTED_INPUT"]
+    print(f"  {'':<16}" + "".join(f"{s[:9]:>11}" for s in states))
+    for expected in states:
+        row = result.confusion[expected]
+        print(f"  {expected:<16}" + "".join(f"{row[a]:>11}" for a in states))
+
+    rule("per exception code")
+    print(f"  {'code':<26}{'tp':>4}{'fp':>4}{'fn':>4}   {'precision':<20}{'recall':<20}{'f1':>6}")
+    for score in result.code_scores:
+        print(f"  {score.code:<26}{score.tp:>4}{score.fp:>4}{score.fn:>4}   "
+              f"{str(score.precision):<20}{str(score.recall):<20}{score.f1:>6.3f}")
+
+    rule("duplicate window sensitivity (the only heuristic rule)")
+    for window, score in result.duplicate_sensitivity.items():
+        label = f"{window}s"
+        print(f"  W={label:<9} tp={score.tp:<3} fp={score.fp:<3} fn={score.fn:<3} "
+              f"P={score.precision}  R={score.recall}")
+
+    leakage = result.totals.leakage
+    rule("leakage (attribute of every non-rejected record)")
+    print(f"  total (GST-inclusive)  {format_inr(leakage.total_paise):>14}   "
+          f"= {format_inr(leakage.gst_paise)} GST + {format_inr(leakage.mdr_paise)} MDR")
+    print(f"  refunded principal     {format_inr(leakage.refunded_paise):>14}")
+    print(f"  leakage_bps            {leakage.leakage_bps:>14}   "
+          f"({leakage.total_paise}/{leakage.refunded_paise} paise)")
+    for method, bucket in leakage.by_method.items():
+        print(f"    {method:<20} {format_inr(bucket['leakage_paise']):>14}   "
+              f"({bucket['records']} refunds)")
+
+    timing = result.totals.timing
+    rule("timing (distribution, not an SLA)")
+    print(f"  CROSS_PERIOD           {timing.cross_period_count:>5}   "
+          f"{format_inr(timing.cross_period_paise)}")
+    print(f"  LATE_VS_THRESHOLD      {timing.late_vs_threshold_count:>5}   "
+          f"(> {cfg.thresholds.settle_threshold_wd} working days)")
+    print(f"  lag histogram          {timing.lag_histogram}   "
+          f"measured on {timing.measured}/{result.n_in}")
+
+    legs = result.totals.legs
+    rule("legs — 3 verified, 1 evidenced")
+    print(f"  1 initiated {legs.initiated}/{legs.records}   "
+          f"2 processed {legs.gateway_processed}/{legs.records}   "
+          f"3 deducted {legs.settlement_deducted}/{legs.records}   "
+          f"4 ARN-evidenced {legs.bank_evidenced}/{legs.records}")
+
+    rule("data errors (excluded from the match-rate denominator)")
+    for reason, n in result.rejection_counts.items():
+        print(f"  {reason:<28}{n:>5}")
+    for channel, n in result.data_error_counts.items():
+        print(f"  {channel:<28}{n:>5}")
+
+    rule("throughput")
+    print(f"  {result.records_per_second:,.0f} records/sec   "
+          f"({result.n_in} records in {result.elapsed_seconds * 1000:.1f} ms)")
+
+    if result.disagreements:
+        rule(f"disagreements ({len(result.disagreements)} shown)")
+        for d in result.disagreements:
+            print(f"  {d.refund_id} [{d.scenario}] {d.field}: "
+                  f"expected {d.expected} got {d.actual}")
+
+    rule("what these numbers do and do not show")
+    print("  Scored against the generator's own seeded labels, so agreement measures")
+    print("  internal consistency between generator and engine — not accuracy against")
+    print("  a real merchant's books. The two places these numbers demonstrably move:")
+    print(f"    - duplicate window: recall "
+          f"{result.duplicate_sensitivity[min(result.duplicate_sensitivity)].recall} "
+          f"at W={min(result.duplicate_sensitivity)}s vs "
+          f"{result.duplicate_sensitivity[max(result.duplicate_sensitivity)].recall} "
+          f"at W={max(result.duplicate_sensitivity)}s")
+    print("    - pull window: a recon pull that stops at period_end manufactures")
+    print("      NEVER_DEDUCTED (tests/test_loader.py measures it)")
+
+    out_dir = cfg.path("out_dir")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / "evaluation.json"
+    path.write_text(json.dumps(result.to_row(), indent=2), encoding="utf-8")
+    print(f"\nwrote {path}")
+    return 0 if result.identity_holds and control.unexplained_paise == 0 else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -177,9 +298,9 @@ def main(argv: list[str] | None = None) -> int:
     p_close = sub.add_parser("close", parents=[common], help="run the closure engine")
     p_close.add_argument("--data", default=None, help="directory holding the pulls")
     p_close.set_defaults(func=cmd_close)
-    sub.add_parser("evaluate", parents=[common], help="score against ground truth").set_defaults(
-        func=cmd_evaluate
-    )
+    p_eval = sub.add_parser("evaluate", parents=[common], help="score against ground truth")
+    p_eval.add_argument("--data", default=None, help="directory holding the pulls and labels")
+    p_eval.set_defaults(func=cmd_evaluate)
 
     args = parser.parse_args(argv)
     return args.func(args)

@@ -269,7 +269,7 @@ network.
 
 ## 11. What is already done
 
-Steps 1-4 are complete, with 206 tests passing. Run `make test` before changing
+Steps 1-5 are complete, with 229 tests passing. Run `make test` before changing
 anything and again after.
 
 * Step 1: `config.py`, `calendar_utils.py`, `money.py`, `ids.py`, `entities.py`,
@@ -311,7 +311,20 @@ generator emitted, not from seeded intent, so all 380 records carry the flags th
 data implies. The 10 deliberately steered cases are still identifiable by their
 `cross_period` scenario.
 
-Next: `evaluate.py` (§8), then `explain.py`, `report.py`.
+* Step 5: `evaluate.py` and `make eval`. Confusion matrix, per-code
+  precision/recall/F1, both false-auto-match denominators, duplicate-window
+  sensitivity, and the §8 identity plus settlement control total. Every rate is a
+  `Ratio` that prints its numerator and denominator. At seed 42 the engine
+  reproduces all 380 labels, so every code scores 1.000 — which measures
+  generator/engine consistency, not real-world accuracy, and `make eval` says so
+  in its own output.
+
+`false_auto_match_rate` is reported against two denominators. The manifest's
+"seeded failures" counts only EXCEPTION + REJECTED_INPUT (52); the inclusive
+variant adds OPEN (101), because an OPEN refund called CLOSED_MATCHED tells a
+controller money landed when it has not.
+
+Next: `explain.py` (§9), then `report.py`.
 
 Engine authors: `data/synthetic/ground_truth.json` exists and is readable. The
 engine must never open it. Only `evaluate.py` may.

@@ -269,7 +269,11 @@ def annotate(
                 exact_sum += Fraction(parent.fee * refund.amount, parent.amount)
 
         # Timing needs an unambiguous settlement date, so it is measured only
-        # where exactly one recon row claims the refund (spec §7.2).
+        # where exactly one recon row claims the refund (spec §7.2). Flags are
+        # assigned, never appended: this function must be safe to call twice on
+        # the same verdicts, which `make eval` does when it re-scores a run.
+        flags: list[str] = []
+        verdict.settle_lag_wd = None
         if len(rows) == 1:
             created_d = to_ist_date(refund.created_at)
             settled_d = to_ist_date(rows[0].settled_at)
@@ -280,12 +284,13 @@ def annotate(
             if month_key(created_d) != month_key(settled_d):
                 # Binary and assumption-free: this is exactly the "an August
                 # refund reduces September's settlement" problem.
-                verdict.timing_flags.append("CROSS_PERIOD")
+                flags.append("CROSS_PERIOD")
                 cross_count += 1
                 cross_paise += refund.amount
             if lag > threshold:
-                verdict.timing_flags.append("LATE_VS_THRESHOLD")
+                flags.append("LATE_VS_THRESHOLD")
                 late_count += 1
+        verdict.timing_flags = flags
 
     leakage = LeakageTotals(
         total_paise=total,

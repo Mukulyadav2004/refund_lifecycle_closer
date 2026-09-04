@@ -232,3 +232,32 @@ no reference to ground truth at all.
 records. An existing generator test that asserted `expected_timing_flags ==
 ["CROSS_PERIOD"]` exactly was relaxed to `in`, since a cross-period refund may
 legitimately also be late.
+
+---
+
+## 10. `attributes.annotate` was not idempotent (step 5)
+
+**Symptom.** A negative-control test in the evaluator failed for the wrong
+reason. It silenced one `NEVER_DEDUCTED` and expected exactly one record to
+disagree with ground truth; 29 disagreed. The extra ones all looked like
+`expected ('LATE_VS_THRESHOLD',)  got ('LATE_VS_THRESHOLD', 'LATE_VS_THRESHOLD')`.
+
+**Cause.** `annotate` appended to `verdict.timing_flags` instead of assigning to
+it. Verdicts are enriched in place, so the second call — `make eval` re-scores a
+run it has already annotated — gave every flagged record a second copy of its
+flag. Leakage was unaffected because those fields are assigned, not accumulated;
+`settle_lag_wd` had the same latent problem, keeping a stale value when a
+re-annotated record no longer had exactly one recon row.
+
+**Fix.** Flags are built in a local list and assigned; `settle_lag_wd` is reset
+to `None` at the top of each record. `annotate` is now safe to call any number of
+times.
+
+**Lesson.** In-place enrichment across module boundaries needs the same
+discipline as a database migration: write the whole field, never add to what is
+already there. The bug was invisible in `make close`, which annotates once, and
+would have surfaced first as inflated `CROSS_PERIOD` counts in the report.
+
+**Guard.** `test_annotating_twice_changes_nothing` snapshots every verdict row,
+re-annotates and compares. The evaluator's negative-control tests would also
+have caught it, which is how it was found.

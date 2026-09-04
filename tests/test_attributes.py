@@ -359,3 +359,18 @@ def test_a_double_deduction_shows_up_as_an_extra_debit(cfg):
     _verdicts, totals = _run(cfg, [payment], [_refund()], rows)
     assert totals.control.explained_by_double_deduction_paise == 10_000_000
     assert totals.control.unexplained_paise == 0
+
+
+def test_annotating_twice_changes_nothing(cfg, sources):
+    """`make eval` re-scores a run, so this must be safe to call more than once.
+
+    Appending to `timing_flags` instead of assigning gave every cross-period
+    refund two copies of its flag on the second pass, which then read as a
+    disagreement against ground truth.
+    """
+    closed = engine.close(sources, cfg)
+    first = attributes.annotate(closed, sources, cfg)
+    snapshot = [v.to_row() for v in closed.verdicts]
+    second = attributes.annotate(closed, sources, cfg)
+    assert [v.to_row() for v in closed.verdicts] == snapshot
+    assert first == second

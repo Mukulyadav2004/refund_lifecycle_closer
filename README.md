@@ -30,11 +30,11 @@ repo never claims a four-leg lifecycle.
 | 2 Synthetic data generator | `generate.py` `cli.py` | **done — 380 refunds, 52 seeded failures** |
 | 3 Loader, invariants, closure engine | `loader.py` `invariants.py` `engine.py` | **done — all 380 seeded labels reproduced** |
 | 4 Leakage, timing, leg evidence | `attributes.py` | **done — 236 bps leakage, control total ties** |
-| 5 Metrics vs ground truth | `evaluate.py` | to build |
+| 5 Metrics vs ground truth | `evaluate.py` | **done — confusion matrix, per-code P/R/F1, sensitivity** |
 | 6 Explanation layer | `explain.py` | to build |
 | 7 Report writer | `report.py` | to build |
 
-206 tests passing. `SPEC.md` is the algorithm. `CLAUDE.md` is the working contract — read it before
+229 tests passing. `SPEC.md` is the algorithm. `CLAUDE.md` is the working contract — read it before
 writing code.
 
 ## Run
