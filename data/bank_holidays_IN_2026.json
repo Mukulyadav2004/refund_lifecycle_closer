@@ -1,0 +1,26 @@
+{
+  "_note": "Bank holidays used for working-day arithmetic. Sundays and the 2nd and 4th Saturdays of every month are handled in code (calendar_utils.py) and are NOT listed here. This list covers pan-India holidays plus Mumbai/Bengaluru observances, which is the right scope for a Razorpay merchant. State-specific holidays elsewhere are out of scope; swap this file to change jurisdiction. Sourced from public RBI holiday-list coverage for 2026; verify against the RBI notification before relying on it in production.",
+  "_source": "Public RBI 2026 holiday list coverage (cleartax, bankbazaar, angelone, fibe). Not an official RBI file.",
+  "year": 2026,
+  "jurisdiction": "IN-national + Mumbai/Bengaluru",
+  "holidays": [
+    {"date": "2026-01-01", "name": "New Year's Day"},
+    {"date": "2026-01-26", "name": "Republic Day"},
+    {"date": "2026-02-19", "name": "Chhatrapati Shivaji Maharaj Jayanti (Mumbai)"},
+    {"date": "2026-03-03", "name": "Holi"},
+    {"date": "2026-03-19", "name": "Gudhi Padwa / Ugadi"},
+    {"date": "2026-03-21", "name": "Ramzan Id (Id-ul-Fitr)"},
+    {"date": "2026-03-26", "name": "Shree Ram Navami"},
+    {"date": "2026-03-31", "name": "Mahavir Jayanti"},
+    {"date": "2026-04-01", "name": "Annual bank closing of accounts"},
+    {"date": "2026-04-03", "name": "Good Friday"},
+    {"date": "2026-04-14", "name": "Dr Ambedkar Jayanti"},
+    {"date": "2026-05-01", "name": "Maharashtra Day / May Day"},
+    {"date": "2026-08-15", "name": "Independence Day"},
+    {"date": "2026-08-26", "name": "Id-e-Milad (Mumbai, Bengaluru)"},
+    {"date": "2026-10-02", "name": "Gandhi Jayanti"},
+    {"date": "2026-10-20", "name": "Dussehra"},
+    {"date": "2026-11-08", "name": "Diwali"},
+    {"date": "2026-12-25", "name": "Christmas Day"}
+  ]
+}

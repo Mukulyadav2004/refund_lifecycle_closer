@@ -1,0 +1,87 @@
+# Refund Lifecycle Closer — configuration.
+# Everything here is an ASSUMPTION unless the comment says "documented".
+# These values are printed in out/report.md and listed in the README.
+
+run:
+  seed: 42
+  timezone: Asia/Kolkata          # Razorpay timestamps are Unix UTC; periods are IST
+  as_of: 2026-09-04               # "now" for all maturity gates
+  period_start: 2026-08-01        # the reporting month being closed
+  period_end: 2026-08-31
+  # Parents may be up to ~6 months old: a normal refund is not possible on a
+  # payment older than 6 months (documented on the Refund entity status field).
+  payments_window_start: 2026-06-01
+  # The recon endpoint is keyed on SETTLEMENT date, so pull past period_end.
+  recon_window_end: 2026-09-04
+
+pricing:
+  fee_bps: 200                    # ASSUMPTION: 2.00% public base rate
+  gst_bps: 1800                   # 18% GST charged on the fee
+  # Payment.fee is GST-INCLUSIVE per Razorpay docs: fee = fee_ex + tax.
+  instant_refund_fee_paise: 500   # only used if instant refunds are enabled
+  enable_instant_refunds: false   # v1 scope: domestic INR, normal speed only
+
+settlement:
+  cycle_wd: 2                     # documented: domestic T+2 WORKING days
+  international_cycle_wd: 7       # documented in FAQs; unused in v1
+  # ASSUMPTION. Razorpay's own recon sample shows a refund netted ~19h after
+  # creation. Do NOT hardcode "T+5 to T+7" — that figure is from a marketing
+  # blog and conflates the customer-receipt SLA with the settlement clock.
+  refund_deduction_lag_wd: 1
+  refund_deduction_lag_tail: [2, 3, 4]
+  refund_deduction_lag_tail_prob: 0.10
+
+thresholds:
+  settle_threshold_wd: 3          # ASSUMPTION: maturity gate = cycle + 1 grace day
+  arn_threshold_wd: 10            # ASSUMPTION: no documented ARN SLA
+  pending_threshold_wd: 10        # ASSUMPTION: no documented SLA
+  amount_tolerance_paise: 0       # exact match required against the returns ledger
+  duplicate_window_seconds: 86400 # ASSUMPTION (heuristic rule)
+  duplicate_sensitivity_windows: [1800, 86400, 259200]
+  chargeback_window_days: 120     # card-network dispute window, industry figure
+
+generator:
+  # ~10% refund rate. An earlier draft used 600 payments for 340 refunds — a 57%
+  # refund rate no merchant has, which also made daily settlements net negative.
+  n_payments: 3400
+  n_refund_events: 340
+  full_refund_share: 0.70
+  receipt_present_prob: 0.70      # merchants that skip `receipt` get no idempotency guard
+  arn_lag_wd_max: 5
+  method_mix:
+    upi: 0.55
+    card: 0.30
+    netbanking: 0.10
+    wallet: 0.05
+  # Seeded failure counts. The engine must never read these; only the evaluator
+  # reads ground_truth.json.
+  scenarios:
+    duplicate_true: 10
+    duplicate_hard_negative: 6
+    amount_mismatch_over: 5
+    amount_mismatch_under: 3
+    never_deducted: 7
+    double_deducted: 3
+    settlement_amount_delta: 4
+    arn_overdue: 8
+    refund_plus_chargeback_realized: 3
+    refund_plus_chargeback_at_risk: 2
+    dispute_won_after_refund: 1
+    chargeback_first_no_refund: 2
+    disputes_unrelated: 5
+    refund_failed_superseded: 2
+    refund_failed_not_superseded: 2
+    pending_overdue: 2
+    open_awaiting: 15
+    pending_young: 3
+    rejected_input: 3
+
+paths:
+  data_dir: data
+  out_dir: out
+  holidays: data/bank_holidays_IN_2026.json
+
+llm:
+  enabled: false                  # template mode works with no API key
+  model: claude-sonnet-4-6
+  max_tokens: 300
