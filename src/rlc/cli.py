@@ -25,14 +25,16 @@ def cmd_generate(args: argparse.Namespace) -> int:
 def cmd_close(args: argparse.Namespace) -> int:
     import json
 
-    from . import invariants
+    from . import attributes, invariants
     from .engine import close
     from .loader import load_sources
+    from .money import format_inr
 
     cfg = _cfg(args)
     sources = load_sources(cfg, Path(args.data) if args.data else None)
     integrity = invariants.run(sources, cfg)
     run = close(sources, cfg, integrity=integrity)
+    totals = attributes.annotate(run, sources, cfg, integrity=integrity)
 
     counts = run.state_counts
     total = sum(counts.values())
@@ -56,6 +58,42 @@ def cmd_close(args: argparse.Namespace) -> int:
         for reason, n in run.open_reason_counts.items():
             print(f"  {reason:<26} {n:>4}")
 
+    leakage = totals.leakage
+    print("\nleakage (attribute of every non-rejected record, matched ones included)")
+    print(f"  {'total (GST-inclusive)':<26} {format_inr(leakage.total_paise):>14}")
+    print(f"  {'  of which GST':<26} {format_inr(leakage.gst_paise):>14}")
+    print(f"  {'  of which MDR':<26} {format_inr(leakage.mdr_paise):>14}")
+    print(f"  {'refunded principal':<26} {format_inr(leakage.refunded_paise):>14}")
+    print(f"  {'leakage_bps':<26} {leakage.leakage_bps:>14}"
+          f"   ({leakage.total_paise} / {leakage.refunded_paise} paise)")
+    for method, bucket in leakage.by_method.items():
+        print(f"    {method:<24} {format_inr(bucket['leakage_paise']):>14}"
+              f"   ({bucket['records']} refunds)")
+
+    timing = totals.timing
+    print("\ntiming (lag reported as a distribution; no SLA is asserted)")
+    print(f"  {'CROSS_PERIOD':<26} {timing.cross_period_count:>5}"
+          f"   {format_inr(timing.cross_period_paise)}")
+    print(f"  {'LATE_VS_THRESHOLD':<26} {timing.late_vs_threshold_count:>5}"
+          f"   (> {cfg.thresholds.settle_threshold_wd} working days)")
+    print(f"  {'measured':<26} {timing.measured:>5}"
+          f"   of {len(run.verdicts)} (needs exactly one recon row)")
+    print(f"  lag histogram (working days): {timing.lag_histogram}")
+
+    legs = totals.legs
+    print("\nlegs — 3 verified, 1 evidenced")
+    print(f"  {'1 initiated':<26} {legs.initiated:>5} / {legs.records}")
+    print(f"  {'2 gateway processed':<26} {legs.gateway_processed:>5} / {legs.records}")
+    print(f"  {'3 settlement deducted':<26} {legs.settlement_deducted:>5} / {legs.records}")
+    print(f"  {'4 bank evidenced':<26} {legs.bank_evidenced:>5} / {legs.records}   (ARN only)")
+
+    control = totals.control
+    print("\nsettlement control total (spec §8)")
+    print(f"  Σdebit - Σamount           {control.difference_paise:>14}")
+    print(f"  explained SETTLEMENT_AMOUNT_DELTA {control.explained_by_amount_delta_paise:>7}")
+    print(f"  explained DOUBLE_DEDUCTED  {control.explained_by_double_deduction_paise:>14}")
+    print(f"  UNEXPLAINED                {control.unexplained_paise:>14}   (must be 0)")
+
     rejections = integrity.rejection_counts
     channels = {k: v for k, v in integrity.channel_counts.items() if v}
     if rejections or channels:
@@ -75,6 +113,37 @@ def cmd_close(args: argparse.Namespace) -> int:
         "open_reasons": run.open_reason_counts,
         "data_errors": integrity.channel_counts,
         "rejections": rejections,
+        "leakage": {
+            "total_paise": leakage.total_paise,
+            "gst_paise": leakage.gst_paise,
+            "mdr_paise": leakage.mdr_paise,
+            "instant_fee_paise": leakage.instant_fee_paise,
+            "refunded_paise": leakage.refunded_paise,
+            "leakage_bps": leakage.leakage_bps,
+            "records": leakage.records,
+            "by_method": leakage.by_method,
+        },
+        "timing": {
+            "measured": timing.measured,
+            "cross_period_count": timing.cross_period_count,
+            "cross_period_paise": timing.cross_period_paise,
+            "late_vs_threshold_count": timing.late_vs_threshold_count,
+            "lag_histogram": timing.lag_histogram,
+        },
+        "legs": {
+            "1_initiated": legs.initiated,
+            "2_gateway_processed": legs.gateway_processed,
+            "3_settlement_deducted": legs.settlement_deducted,
+            "4_bank_evidenced": legs.bank_evidenced,
+        },
+        "settlement_control": {
+            "debit_paise": control.debit_paise,
+            "refund_amount_paise": control.refund_amount_paise,
+            "explained_by_amount_delta_paise": control.explained_by_amount_delta_paise,
+            "explained_by_double_deduction_paise": control.explained_by_double_deduction_paise,
+            "unexplained_paise": control.unexplained_paise,
+        },
+        "rounding_residual_paise": totals.rounding_residual_paise,
         "verdicts": [v.to_row() for v in run.verdicts],
     }
     path = out_dir / "verdicts.json"

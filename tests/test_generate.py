@@ -232,7 +232,9 @@ def test_cross_period_seeds_really_cross_a_month(built):
         created = to_ist_date(refunds[rid].created_at)
         settled = to_ist_date(rows[rid][0].settled_at)
         assert (created.year, created.month) != (settled.year, settled.month)
-        assert ds.ground_truth[rid]["expected_timing_flags"] == ["CROSS_PERIOD"]
+        # LATE_VS_THRESHOLD is independent: a seed steered across a month
+        # boundary may also have taken more than settle_threshold_wd to settle.
+        assert "CROSS_PERIOD" in ds.ground_truth[rid]["expected_timing_flags"]
         assert ds.ground_truth[rid]["expected_state"] == CLOSED_MATCHED
 
 

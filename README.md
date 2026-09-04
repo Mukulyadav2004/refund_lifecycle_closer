@@ -29,12 +29,12 @@ repo never claims a four-leg lifecycle.
 | 1 Skeleton, config, calendar, money, entities | `config.py` `calendar_utils.py` `money.py` `ids.py` `entities.py` | **done** |
 | 2 Synthetic data generator | `generate.py` `cli.py` | **done — 380 refunds, 52 seeded failures** |
 | 3 Loader, invariants, closure engine | `loader.py` `invariants.py` `engine.py` | **done — all 380 seeded labels reproduced** |
-| 4 Leakage, timing, leg evidence | `attributes.py` | to build |
+| 4 Leakage, timing, leg evidence | `attributes.py` | **done — 236 bps leakage, control total ties** |
 | 5 Metrics vs ground truth | `evaluate.py` | to build |
 | 6 Explanation layer | `explain.py` | to build |
 | 7 Report writer | `report.py` | to build |
 
-181 tests passing. `SPEC.md` is the algorithm. `CLAUDE.md` is the working contract — read it before
+206 tests passing. `SPEC.md` is the algorithm. `CLAUDE.md` is the working contract — read it before
 writing code.
 
 ## Run

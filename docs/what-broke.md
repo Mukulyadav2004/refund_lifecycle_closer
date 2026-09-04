@@ -180,3 +180,55 @@ resurfacing in an assertion instead of in a design doc. `open_reasons` is a list
 for a reason, and the four legs are independent by design. Any code that treats a
 state as shorthand for one specific reason will be wrong the moment a record has
 two.
+
+---
+
+## 8. The settlement control total did not balance (step 4)
+
+**Symptom.** SPEC.md §8 requires that `Σdebit − Σamount` over settled refunds be
+fully explained by `SETTLEMENT_AMOUNT_DELTA` plus the extra debits of
+`DOUBLE_DEDUCTED`. The first run reported an unexplained −₹1,332.
+
+**Cause.** My accounting, not the data. I added `refund.amount` once per *recon
+row* instead of once per *refund*, so a double-deducted refund contributed its
+amount twice on both sides of the subtraction. The two extra debits cancelled
+themselves out of the difference and were then counted again as "explained",
+producing a residual of exactly the double-deducted total.
+
+**Fix.** Debits are summed per row, amounts per refund. That asymmetry is the
+whole point of the control: it is what makes a second debit visible.
+
+**Guard.** `test_every_paisa_of_settlement_difference_is_explained` asserts
+`unexplained_paise == 0` on the full month, plus two synthetic cases that isolate
+a delta and a double deduction. `unexplained_paise` is now printed by
+`make close` with "(must be 0)" beside it.
+
+## 9. Ground truth's timing flags described the intent, not the data
+
+**Symptom.** The engine flagged 22 `CROSS_PERIOD` refunds and 11
+`LATE_VS_THRESHOLD`. Ground truth listed 10 and 0.
+
+**Cause.** Same shape as entry 4. Ten refunds were deliberately *steered* across
+a month boundary and labelled. But any refund created near month end and
+deducted in the next batch crosses one too, and a refund whose sampled deduction
+lag ran to 4 working days is late against a 3-day threshold whether or not
+anyone seeded it. `expected_timing_flags` was recording what the generator meant
+to do rather than what it wrote.
+
+**Fix.** `_label_timing` derives both flags from the `settled_at` values the
+generator actually emitted, after step 5. The 10 steered cases stay identifiable
+by their `cross_period` scenario, and an assertion checks each of them really did
+cross — the seeder's intent is now verified rather than assumed.
+
+**On circularity.** This label is computed from dates the generator chose, so it
+cannot test whether the engine *guesses* a hidden intent. What it does test is
+whether the engine joins the recon rows and converts to IST correctly — and that
+is the first entry in CLAUDE.md §12, because 01:00 IST on 1 September is 31
+August in UTC and a UTC month test silently reports the wrong month.
+`test_a_month_boundary_is_measured_in_ist_not_utc` pins that case directly, with
+no reference to ground truth at all.
+
+**Guard.** `test_the_engine_agrees_with_the_seeded_timing_flags` compares all 380
+records. An existing generator test that asserted `expected_timing_flags ==
+["CROSS_PERIOD"]` exactly was relaxed to `in`, since a cross-period refund may
+legitimately also be late.

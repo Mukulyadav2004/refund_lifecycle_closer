@@ -269,8 +269,8 @@ network.
 
 ## 11. What is already done
 
-Steps 1, 2 and 3 are complete, with 181 tests passing. Run `make test` before
-changing anything and again after.
+Steps 1-4 are complete, with 206 tests passing. Run `make test` before changing
+anything and again after.
 
 * Step 1: `config.py`, `calendar_utils.py`, `money.py`, `ids.py`, `entities.py`,
   the holiday calendar, `config.yaml`.
@@ -300,7 +300,18 @@ Two rules the engine added that are not in SPEC.md §6, both recorded in
   `engine.INFORMATIONAL_ANNOTATIONS`. The generator does not seed it, so the
   evaluator must not score it as a false positive.
 
-Next: `attributes.py` (§7), then `evaluate.py`, `explain.py`, `report.py`.
+* Step 4: `attributes.py`. Leakage, timing and leg evidence are computed on every
+  non-rejected record and folded into `make close`. At seed 42: leakage
+  ₹10,424.41 on ₹4,41,736.36 refunded (236 bps, ₹1,589.69 GST / ₹8,834.72 MDR),
+  22 `CROSS_PERIOD`, 11 `LATE_VS_THRESHOLD`, and the §8 settlement control total
+  closes with 0 paise unexplained.
+
+Timing flags in `ground_truth.json` are derived from the settlement dates the
+generator emitted, not from seeded intent, so all 380 records carry the flags the
+data implies. The 10 deliberately steered cases are still identifiable by their
+`cross_period` scenario.
+
+Next: `evaluate.py` (§8), then `explain.py`, `report.py`.
 
 Engine authors: `data/synthetic/ground_truth.json` exists and is readable. The
 engine must never open it. Only `evaluate.py` may.

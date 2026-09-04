@@ -34,7 +34,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Iterable
 
-from .calendar_utils import BankCalendar, ist_unix, to_ist_date
+from .calendar_utils import BankCalendar, ist_unix, month_key, to_ist_date
 from .config import Config
 from .entities import (
     CLOSED_MATCHED,
@@ -176,6 +176,7 @@ class SyntheticDataGenerator:
         self._recompute_parent_totals()
         recon, settlements = self._step5_settlements_and_recon()
         self._label_immature(recon)
+        self._label_timing(recon)
         ground_truth = self._step6_ground_truth()
         manifest = self._manifest(recon, settlements)
         self._self_check(recon, settlements)
@@ -959,6 +960,51 @@ class SyntheticDataGenerator:
                 if plan.scenario == "happy_path":
                     plan.scenario = "open_immature"
                     self.counts["open_immature"] = self.counts.get("open_immature", 0) + 1
+
+    def _label_timing(self, recon: list[ReconRow]) -> None:
+        """Derive timing flags from the settlement dates actually written (spec §7.2).
+
+        Timing is an attribute of the data, not a seeded scenario. Only 10
+        refunds were *steered* across a month boundary, but any refund created
+        near month end and deducted in the next batch crosses one too, and the
+        labels have to describe the file rather than the intent — the same
+        mistake as `_label_immature` fixed for `expected_state`.
+
+        This reads the `settled_at` values it just wrote. What the evaluator
+        scores with it is therefore whether the engine joins the recon rows and
+        converts to IST correctly, which is the exact failure mode CLAUDE.md §12
+        opens with: a refund created 31 Aug 23:30 IST is 30 Aug in UTC, and a
+        UTC month test silently reports the wrong month. The 10 deliberately
+        seeded cases remain identifiable by their `cross_period` scenario.
+        """
+        rows_by_refund: dict[str, list[ReconRow]] = {}
+        for row in recon:
+            if row.is_refund:
+                rows_by_refund.setdefault(row.entity_id, []).append(row)
+
+        for plan in self.plans:
+            if plan.expected_state == REJECTED_INPUT:
+                continue  # stage 0 stops before any attribute is computed
+            rows = rows_by_refund.get(plan.refund.id, [])
+            if len(rows) != 1:
+                # Timing needs an unambiguous settlement date, so a
+                # double-deducted refund has none (spec §7.2).
+                plan.expected_timing = []
+                continue
+            created_d = plan.created_date
+            settled_d = to_ist_date(rows[0].settled_at)
+            flags: list[str] = []
+            if month_key(created_d) != month_key(settled_d):
+                flags.append("CROSS_PERIOD")
+            lag = self.cal.working_days_between(created_d, settled_d)
+            if lag > self.cfg.thresholds.settle_threshold_wd:
+                flags.append("LATE_VS_THRESHOLD")
+            if plan.scenario == "cross_period":
+                assert "CROSS_PERIOD" in flags, (
+                    f"{plan.refund.id}: seeded as cross_period but settled {settled_d} "
+                    f"in the same month it was created ({created_d})"
+                )
+            plan.expected_timing = flags
 
     # ------------------------------------------------------------- step 6
 
