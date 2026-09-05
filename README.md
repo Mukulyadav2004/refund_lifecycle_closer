@@ -364,6 +364,9 @@ Every entry ends with the test that now guards it.
   ceiling, and it is stated before a judge has to say it.
 - v1 is domestic INR only; instant refunds are off; recon `transfer` and
   `adjustment` rows are not generated.
+- Refund status is modelled as `pending` / `processed` / `failed`. Razorpay's
+  refund FAQ also describes a `reversed` outcome delivered on the
+  `refund.processed` webhook; v1 neither generates nor classifies it.
 - Below roughly 100 refunds a month with no partials and no disputes, the
   Razorpay dashboard is sufficient and this adds nothing.
 

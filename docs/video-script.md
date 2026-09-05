@@ -22,7 +22,13 @@ back to 24h before you start, or your opening numbers will be wrong.
 > ARN.
 >
 > So between "processed" and the customer's bank there are two more places money
-> goes missing, and the dashboard shows you neither. That is the gap this closes.
+> goes missing.
+>
+> Razorpay does expose the links — a refund carries its settlement id, a recon row
+> carries its dispute id. What it does not give you is one view that puts them
+> together **across a period boundary**. Their own writing calls that the top
+> source of unresolved reconciliation variances: a March refund reduces your
+> April settlement. That join is the gap this closes.
 
 **Why this opening works:** it is their documentation, not your opinion, and it
 reframes reconciliation from a chore into a trust problem.
@@ -110,8 +116,9 @@ recon.settlement_id → settlements.id                     n:1      control tota
 
 **Beat 3 — Exceptions (20s).** Switch to Exceptions.
 
-> 49 refunds need a human, sorted by what they cost. The dashboard shows you none
-> of these.
+> 49 refunds need a human, sorted by what they cost. Not one of these is a single
+> lookup — each needs a join across three sources and, for most of them, across a
+> month boundary.
 
 **Beat 4 — the slider (30s).** Switch to Accuracy. This is your strongest beat.
 
@@ -143,9 +150,9 @@ Open the drawer.
 > won a chargeback on the same payment. The merchant paid twice — total exposure
 > ₹3,438.
 >
-> Only that ordering is reachable, and we know that from the API error table: a
-> refund attempted during an open dispute is blocked with a 400. So refund-then-
-> chargeback is the only shape this can take.
+> Only that ordering is reachable in practice: Razorpay restricts refunds while a
+> dispute is under investigation, so refund-then-chargeback is the shape we model
+> and the only one the engine looks for.
 >
 > The drawer shows every leg, the evidence, and a written explanation with a
 > recommended action.
@@ -195,8 +202,8 @@ Open the drawer.
 >
 > The accuracy numbers score against labels our own generator produced. That
 > measures internal consistency, not truth. The number I'd actually stand behind
-> is the strict match rate: 85%, and 49 exceptions found that a dashboard shows
-> you nothing about.
+> is the strict match rate: 85%, and 49 exceptions found — each one a join across
+> three sources that no single view assembles for you.
 >
 > Deterministic where determinism is possible. A model only where prose is the
 > product. And a guard on the model, because it was wrong on its second try.
@@ -224,3 +231,10 @@ Open the drawer.
 - "we reconcile Razorpay data" — say *synthetic data shaped exactly like the
   documented API responses*
 - "100% accurate" without the caveat in the same breath
+- **"the dashboard doesn't show you this"** — it does show refund→settlement in
+  Refund Details, and recon rows carry `dispute_id`. The defensible gap is the
+  absence of a *unified, cross-period* view, not absence of the data. Overstating
+  this is the one thing a Razorpay judge can counter on the spot.
+- **quoting a specific 400 for "refund blocked by open dispute"** — the
+  restriction is real, but that exact error string is not in the public error
+  tables. Describe the behaviour, don't quote a code you can't show them.
