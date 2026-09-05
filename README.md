@@ -32,9 +32,9 @@ repo never claims a four-leg lifecycle.
 | 4 Leakage, timing, leg evidence | `attributes.py` | **done — 236 bps leakage, control total ties** |
 | 5 Metrics vs ground truth | `evaluate.py` | **done — confusion matrix, per-code P/R/F1, sensitivity** |
 | 6 Explanation layer | `explain.py` | **done — Gemini + template fallback, two output guards** |
-| 7 Report writer | `report.py` | to build |
+| 7 Report writer | `report.py` | **done — report.md, results.jsonl, exceptions.csv, run.log** |
 
-258 tests passing. `SPEC.md` is the algorithm. `CLAUDE.md` is the working contract — read it before
+281 tests passing. `SPEC.md` is the algorithm. `CLAUDE.md` is the working contract — read it before
 writing code.
 
 ## Run

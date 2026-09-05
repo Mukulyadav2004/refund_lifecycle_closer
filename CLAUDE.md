@@ -269,8 +269,8 @@ network.
 
 ## 11. What is already done
 
-Steps 1-6 are complete, with 258 tests passing. Run `make test` before changing
-anything and again after.
+All seven steps are complete, with 281 tests passing. Run `make test` before
+changing anything and again after.
 
 * Step 1: `config.py`, `calendar_utils.py`, `money.py`, `ids.py`, `entities.py`,
   the holiday calendar, `config.yaml`.
@@ -342,7 +342,21 @@ invents something degrades the prose and never the numbers. Template mode is the
 floor, not a degraded mode: `make close` with no API key produces a full
 explanation for every exception, deterministically.
 
-Next: `report.py` (§10).
+* Step 7: `report.py`. Writes the four §10 artifacts into `out/` — `report.md`,
+  `results.jsonl`, `exceptions.csv` and `run.log`. `make close` writes all four
+  (report.md without the ground-truth sections, so a run over real unlabelled
+  data still produces one); `make eval` rewrites report.md with the match rates,
+  confusion matrix, per-code scores and sensitivity table, and adds
+  `evaluation.json`.
+
+Two report disciplines are enforced by tests rather than by care:
+`test_every_percentage_carries_its_denominator` and
+`test_the_report_never_uses_banned_vocabulary` (`4-leg`, `four-leg`, `orphan`,
+`all four legs`). The second one caught two live violations in the first draft —
+see `docs/what-broke.md` entry 14.
+
+The build is feature-complete. What remains is the README (§10 lists the ten
+required sections), the video, and whatever the run turns up.
 
 Engine authors: `data/synthetic/ground_truth.json` exists and is readable. The
 engine must never open it. Only `evaluate.py` may.

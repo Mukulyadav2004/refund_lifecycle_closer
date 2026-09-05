@@ -26,15 +26,24 @@ def cmd_close(args: argparse.Namespace) -> int:
     import json
 
     from . import attributes, explain, invariants
+    from . import report as report_writer
     from .engine import close
     from .loader import load_sources
     from .money import format_inr
 
     cfg = _cfg(args)
+    log = report_writer.RunLog()
     sources = load_sources(cfg, Path(args.data) if args.data else None)
+    log.stage("load", payments=len(sources.payments), refunds=len(sources.refunds),
+              recon=len(sources.recon))
     integrity = invariants.run(sources, cfg)
+    log.stage("invariants", rejections=len(integrity.rejections),
+              data_errors=len(integrity.data_errors))
     run = close(sources, cfg, integrity=integrity)
+    log.stage("close", **run.state_counts)
     totals = attributes.annotate(run, sources, cfg, integrity=integrity)
+    log.stage("attributes", leakage_paise=totals.leakage.total_paise,
+              unexplained_paise=totals.control.unexplained_paise)
 
     counts = run.state_counts
     total = sum(counts.values())
@@ -130,77 +139,55 @@ def cmd_close(args: argparse.Namespace) -> int:
               "(each fell back to its template, none were dropped)")
         print(f"    first: {report.provider_errors[0][:120]}")
 
-    out_dir = cfg.path("out_dir")
-    out_dir.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "as_of": run.as_of.isoformat(),
-        "explanations": {
-            "counts": report.counts,
-            "provider": llm_cfg.get("model") if provider else "template",
-            "errors": len(report.provider_errors),
-            "items": [e.to_row() for e in report.explanations.values()],
-        },
-        "duplicate_window_seconds": run.duplicate_window_seconds,
-        "state_counts": counts,
-        "exception_codes": run.code_counts,
-        "open_reasons": run.open_reason_counts,
-        "data_errors": integrity.channel_counts,
-        "rejections": rejections,
-        "leakage": {
-            "total_paise": leakage.total_paise,
-            "gst_paise": leakage.gst_paise,
-            "mdr_paise": leakage.mdr_paise,
-            "instant_fee_paise": leakage.instant_fee_paise,
-            "refunded_paise": leakage.refunded_paise,
-            "leakage_bps": leakage.leakage_bps,
-            "records": leakage.records,
-            "by_method": leakage.by_method,
-        },
-        "timing": {
-            "measured": timing.measured,
-            "cross_period_count": timing.cross_period_count,
-            "cross_period_paise": timing.cross_period_paise,
-            "late_vs_threshold_count": timing.late_vs_threshold_count,
-            "lag_histogram": timing.lag_histogram,
-        },
-        "legs": {
-            "1_initiated": legs.initiated,
-            "2_gateway_processed": legs.gateway_processed,
-            "3_settlement_deducted": legs.settlement_deducted,
-            "4_bank_evidenced": legs.bank_evidenced,
-        },
-        "settlement_control": {
-            "debit_paise": control.debit_paise,
-            "refund_amount_paise": control.refund_amount_paise,
-            "explained_by_amount_delta_paise": control.explained_by_amount_delta_paise,
-            "explained_by_double_deduction_paise": control.explained_by_double_deduction_paise,
-            "unexplained_paise": control.unexplained_paise,
-        },
-        "rounding_residual_paise": totals.rounding_residual_paise,
-        "verdicts": [v.to_row() for v in run.verdicts],
-    }
-    path = out_dir / "verdicts.json"
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    print(f"\nwrote {path}")
+    log.stage("explain", **report.counts)
+
+    # report.md is written here without the ground-truth sections, so a run over
+    # real merchant data — which has no labels — still produces one. `make eval`
+    # rewrites it with the match rates, confusion matrix and per-code scores.
+    written = report_writer.write_all(
+        cfg, run, sources, totals, evaluation=None, explanations=report, log=log
+    )
+    print("\nwrote")
+    for name, path in written.items():
+        print(f"  {name:<12} {path}")
     return 0
 
 
 def cmd_evaluate(args: argparse.Namespace) -> int:
     import json
 
-    from . import attributes, invariants
+    from . import attributes, explain, invariants
+    from . import report as report_writer
     from .engine import close
     from .evaluate import evaluate
     from .loader import load_sources
     from .money import format_inr
 
     cfg = _cfg(args)
+    log = report_writer.RunLog()
     data_dir = Path(args.data) if args.data else None
     sources = load_sources(cfg, data_dir)
+    log.stage("load", payments=len(sources.payments), refunds=len(sources.refunds),
+              recon=len(sources.recon))
     integrity = invariants.run(sources, cfg)
+    log.stage("invariants", rejections=len(integrity.rejections))
     run = close(sources, cfg, integrity=integrity)
+    log.stage("close", **run.state_counts)
     totals = attributes.annotate(run, sources, cfg, integrity=integrity)
+    log.stage("attributes", leakage_paise=totals.leakage.total_paise)
+    try:
+        provider = explain.build_provider(cfg)
+    except RuntimeError as exc:
+        print(f"explanations: {exc}")
+        provider = None
+    cap = (cfg.llm or {}).get("max_model_calls")
+    explanations = explain.explain_all(
+        run.verdicts, sources, cfg, provider=provider,
+        max_model_calls=int(cap) if cap else None,
+    )
+    log.stage("explain", **explanations.counts)
     result = evaluate(run, sources, cfg, data_dir=data_dir, totals=totals)
+    log.stage("evaluate", exact_agreement=result.exact_record_agreement.numerator)
 
     def rule(title: str) -> None:
         print(f"\n{title}\n{'-' * len(title)}")
@@ -305,9 +292,16 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
 
     out_dir = cfg.path("out_dir")
     out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / "evaluation.json"
-    path.write_text(json.dumps(result.to_row(), indent=2), encoding="utf-8")
-    print(f"\nwrote {path}")
+    (out_dir / "evaluation.json").write_text(
+        json.dumps(result.to_row(), indent=2), encoding="utf-8"
+    )
+    written = report_writer.write_all(
+        cfg, run, sources, totals, evaluation=result, explanations=explanations, log=log
+    )
+    print("\nwrote")
+    print(f"  {'evaluation':<12} {out_dir / 'evaluation.json'}")
+    for name, path in written.items():
+        print(f"  {name:<12} {path}")
     return 0 if result.identity_holds and control.unexplained_paise == 0 else 1
 
 

@@ -345,3 +345,29 @@ model, so when quota runs out it runs out on the cheapest findings.
 **Guard.** `test_quota_exhaustion_still_explains_every_record` and
 `test_capping_model_calls_spends_them_on_the_biggest_exposures`. The empty-response
 path raises a message naming `maxOutputTokens` rather than failing silently.
+
+---
+
+## 14. The report explained the banned word by using it (step 7)
+
+**Symptom.** `test_the_report_never_uses_banned_vocabulary[orphan]` failed
+against `report.md`, twice.
+
+**Cause.** Both occurrences were disclaimers. The data-errors section ended
+"Neither is called an orphan", and the AI-judgment section listed the word among
+the things the claim guard rejects. Both were *about* the rule rather than
+breaking it, which felt like enough. It is not: CLAUDE.md §1 says do not use the
+word, without an exception for talking about it, and a judge scanning the
+document does not read intent.
+
+**Fix.** The data-errors section now distinguishes `NO_PARENT_PAYMENT` from
+`NEVER_DEDUCTED` on their own terms — different causes, different owners — which
+makes the point better than naming the term it is avoiding ever did. The AI
+section says "this project's banned vocabulary".
+
+**Lesson.** A vocabulary rule that carves out an exception for meta-discussion is
+not a vocabulary rule. Worth noting the test caught this and I would not have:
+the sentences read as compliant while writing them.
+
+**Guard.** `test_the_report_never_uses_banned_vocabulary`, parameterised over
+`4-leg`, `four-leg`, `orphan` and `all four legs`.
