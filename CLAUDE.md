@@ -269,8 +269,8 @@ network.
 
 ## 11. What is already done
 
-All seven steps are complete, with 285 tests passing. Run `make test` before
-changing anything and again after.
+All seven steps are complete, plus the dashboard, with 304 tests passing. Run
+`make test` before changing anything and again after.
 
 * Step 1: `config.py`, `calendar_utils.py`, `money.py`, `ids.py`, `entities.py`,
   the holiday calendar, `config.yaml`.
@@ -355,8 +355,21 @@ Two report disciplines are enforced by tests rather than by care:
 `all four legs`). The second one caught two live violations in the first draft —
 see `docs/what-broke.md` entry 14.
 
-The build is feature-complete. What remains is the README (§10 lists the ten
-required sections), the video, and whatever the run turns up.
+* Dashboard: `server.py` and `web/`. A stdlib `http.server` over the same
+  pipeline — no framework, no CDN, dependencies still just `pyyaml`. Payload
+  builders are pure functions of an `AppState`, so they are tested without
+  binding a socket. `make serve`, or deploy with the shipped `Procfile` /
+  `railway.json` / `nixpacks.toml`; `ensure_data` generates the dataset on first
+  boot because `data/synthetic/` is gitignored.
+
+There is no second implementation of anything in the UI: every number on the
+dashboard comes from `loader -> invariants -> engine -> attributes -> explain ->
+evaluate`, the same path `make eval` runs. The whole close is ~40 ms, so
+`POST /api/rerun` recomputes with a different duplicate window instead of caching
+— which is what makes the sensitivity analysis a live control rather than a
+table.
+
+The build is feature-complete. What remains is the video.
 
 Engine authors: `data/synthetic/ground_truth.json` exists and is readable. The
 engine must never open it. Only `evaluate.py` may.

@@ -1,7 +1,7 @@
 PY ?= python3
 export PYTHONPATH := src
 
-.PHONY: install test data close eval all clean
+.PHONY: install test data close eval serve all clean
 
 install:
 	$(PY) -m pip install -r requirements.txt
@@ -17,6 +17,9 @@ close:
 
 eval:
 	$(PY) -m rlc.cli evaluate --config config.yaml
+
+serve:
+	$(PY) -m rlc.server
 
 all: data close eval
 

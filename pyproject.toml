@@ -9,6 +9,10 @@ description = "Refund lifecycle reconciliation agent for the Razorpay AI Buildat
 requires-python = ">=3.11"
 dependencies = ["pyyaml>=6.0"]
 
+[project.scripts]
+rlc = "rlc.cli:main"
+rlc-server = "rlc.server:serve"
+
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 

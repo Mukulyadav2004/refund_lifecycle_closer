@@ -29,7 +29,7 @@ verified.
 
 ```bash
 make install     # pyyaml + pytest, nothing else
-make test        # 285 tests, no network
+make test        # 304 tests, no network
 make data        # synthetic data + ground truth, seed 42
 make close       # close every refund, write out/
 make eval        # score against ground truth, write out/report.md
@@ -37,6 +37,35 @@ make eval        # score against ground truth, write out/report.md
 
 `make all` runs the last three in order. No Razorpay account, no API key, no
 network — the LLM layer defaults to template mode so the demo always runs.
+
+### The dashboard
+
+```bash
+make serve       # http://localhost:8000
+```
+
+A payments-console UI over the same pipeline — overview with the identity
+equation, the exception list in exposure order with per-record evidence and
+explanation, the confusion matrix, leakage and timing, and the generated report.
+Built on stdlib `http.server` with vanilla JS and no CDN, so a container serves
+everything from its own origin and the dependency list stays at `pyyaml`.
+
+The whole close runs in ~40 ms, so the dashboard recomputes rather than caches.
+That makes the **duplicate-window control on the Accuracy page** live: drag it to
+30 minutes, hit re-run, and watch `DUPLICATE_SUSPECT` fall from 10 to 3, recall
+drop to 30%, and seven refunds move from `EXCEPTION` to `CLOSED_MATCHED` — the
+sensitivity table from the report, happening in front of you.
+
+### Deploying
+
+The repo ships `Procfile`, `railway.json` and `nixpacks.toml`. On Railway:
+create a project from the repo and deploy — `$PORT` is read from the
+environment, `/healthz` is the health check, and the synthetic dataset is
+generated on first boot because it is gitignored. Nothing else to configure.
+
+To let the deployed instance use the model, set `GEMINI_API_KEY` in the Railway
+environment and `llm.enabled: true` in `config.yaml`. Left alone it runs in
+template mode, which is the safer default for a live demo.
 
 Sample output from `make eval`:
 
@@ -383,6 +412,7 @@ Other:
 | 5 Metrics vs ground truth | `evaluate.py` | **done — confusion matrix, per-code P/R/F1, sensitivity** |
 | 6 Explanation layer | `explain.py` | **done — Gemini + template fallback, two output guards** |
 | 7 Report writer | `report.py` | **done — report.md, results.jsonl, exceptions.csv, run.log** |
+| 8 Dashboard and deploy | `server.py` `web/` | **done — stdlib server, live re-run, Railway-ready** |
 
-285 tests, no network. `SPEC.md` is the algorithm; `CLAUDE.md` is the working
+304 tests, no network. `SPEC.md` is the algorithm; `CLAUDE.md` is the working
 contract.

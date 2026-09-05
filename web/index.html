@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Refund Lifecycle Closer</title>
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#8377;</text></svg>">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">RLC</div>
+      <div>
+        <div class="brand-name">Refund Lifecycle</div>
+        <div class="brand-sub">Closer</div>
+      </div>
+    </div>
+    <nav id="nav">
+      <button class="nav-item active" data-view="overview"><span>Overview</span></button>
+      <button class="nav-item" data-view="exceptions"><span>Exceptions</span><b id="nav-exceptions"></b></button>
+      <button class="nav-item" data-view="records"><span>All refunds</span><b id="nav-records"></b></button>
+      <button class="nav-item" data-view="accuracy"><span>Accuracy</span></button>
+      <button class="nav-item" data-view="money"><span>Leakage &amp; timing</span></button>
+      <button class="nav-item" data-view="assumptions"><span>Assumptions</span></button>
+      <button class="nav-item" data-view="report"><span>Report</span></button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="claim">3 legs verified<br><span>1 leg evidenced</span></div>
+      <p>Razorpay AI Buildathon &middot; AI Finance Controller. Synthetic data, generated locally.</p>
+    </div>
+  </aside>
+
+  <main>
+    <header class="topbar">
+      <div>
+        <h1 id="page-title">Overview</h1>
+        <p id="page-sub" class="muted">loading&hellip;</p>
+      </div>
+      <div class="topbar-right">
+        <span class="chip" id="chip-period">&mdash;</span>
+        <span class="chip" id="chip-seed">&mdash;</span>
+        <span class="chip ok" id="chip-identity">&mdash;</span>
+      </div>
+    </header>
+    <div id="view" class="view"></div>
+  </main>
+</div>
+
+<div id="drawer" class="drawer" hidden>
+  <div class="drawer-panel">
+    <button class="drawer-close" id="drawer-close">&times;</button>
+    <div id="drawer-body"></div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

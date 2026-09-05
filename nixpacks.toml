@@ -1,0 +1,10 @@
+# Railway/Nixpacks build. `pip install -e .` puts `rlc` on the path via
+# pyproject.toml (packages.find where=src), so no PYTHONPATH juggling at runtime.
+[phases.setup]
+nixPkgs = ["python312"]
+
+[phases.install]
+cmds = ["python -m pip install --upgrade pip", "python -m pip install --no-cache-dir -e ."]
+
+[start]
+cmd = "python -m rlc.server"
