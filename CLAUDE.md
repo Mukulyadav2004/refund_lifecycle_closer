@@ -269,7 +269,7 @@ network.
 
 ## 11. What is already done
 
-All seven steps are complete, with 281 tests passing. Run `make test` before
+All seven steps are complete, with 285 tests passing. Run `make test` before
 changing anything and again after.
 
 * Step 1: `config.py`, `calendar_utils.py`, `money.py`, `ids.py`, `entities.py`,

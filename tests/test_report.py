@@ -17,6 +17,11 @@ import pytest
 from rlc import attributes, engine, evaluate as ev, explain, report
 from rlc.entities import EXCEPTION
 
+# CLAUDE.md §1. `CLAUDE.md` and `SPEC.md` are exempt from this list, since
+# stating the rule requires naming the words it bans; everything a judge reads
+# as output is not.
+BANNED = ("4-leg", "four-leg", "orphan", "all four legs")
+
 
 @pytest.fixture(scope="module")
 def artifacts(sources, cfg, dataset, tmp_path_factory):
@@ -133,9 +138,22 @@ def test_the_report_states_the_claim_precisely(report_text):
     assert "evidenced only" in report_text.lower()
 
 
-@pytest.mark.parametrize("banned", ["4-leg", "four-leg", "orphan", "all four legs"])
+@pytest.mark.parametrize("banned", BANNED)
 def test_the_report_never_uses_banned_vocabulary(report_text, banned):
     assert banned.lower() not in report_text.lower()
+
+
+@pytest.mark.parametrize("banned", BANNED)
+def test_the_readme_never_uses_banned_vocabulary(banned):
+    """The README is a judged document and gets the same rule as the report.
+
+    `CLAUDE.md` and `SPEC.md` are exempt: stating the rule requires naming the
+    words it bans. Everything a judge reads as output does not.
+    """
+    from rlc.config import REPO_ROOT
+
+    text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert banned.lower() not in text.lower()
 
 
 def test_every_percentage_carries_its_denominator(report_text):
