@@ -294,25 +294,30 @@ function renderAccuracy() {
       <div class="card">
         <h2>Duplicate window sensitivity</h2>
         <p class="hint"><code>DUPLICATE_SUSPECT</code> is the only non-arithmetic rule in the engine.
-        Move the window and the whole pipeline re-runs — 380 refunds, live.</p>
-        <div class="controls" style="margin-bottom:14px">
+        Move the slider and release it: the whole month re-closes — 380 refunds, server-side, in about
+        40&nbsp;ms — and the panel below shows the result at <em>that</em> window.</p>
+        <div class="controls" style="margin-bottom:6px">
           <input type="range" id="win" min="600" max="259200" step="600" value="${win}">
-          <span class="chip num" id="win-label">${(win / 3600).toFixed(1)} h</span>
+          <span class="chip num" id="win-label">${fmtWin(win)}</span>
           <button class="btn" id="win-run">Re-run</button>
         </div>
+        <div id="win-live">${liveWindowPanel()}</div>
+        <h3 style="font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);margin:20px 0 6px">
+          The three windows the report publishes</h3>
         <table>
           <thead><tr><th>window</th><th class="right">TP</th><th class="right">FP</th><th class="right">FN</th><th class="right">precision</th><th class="right">recall</th></tr></thead>
           <tbody>
-            ${a.duplicate_sensitivity.map((d) => `<tr>
-              <td class="num">${d.window_seconds >= 3600 ? (d.window_seconds / 3600) + " h" : (d.window_seconds / 60) + " min"}</td>
+            ${a.duplicate_sensitivity.map((d) => `<tr${d.window_seconds === win ? ' style="background:#eaf2ff"' : ""}>
+              <td class="num">${fmtWin(d.window_seconds)}${d.window_seconds === win ? " <b>· current</b>" : ""}</td>
               <td class="right num">${d.tp}</td><td class="right num">${d.fp}</td><td class="right num">${d.fn}</td>
               <td class="right num">${d.precision.pct.toFixed(0)}%</td>
               <td class="right num">${d.recall.pct.toFixed(0)}%</td></tr>`).join("")}
           </tbody>
         </table>
-        <p class="hint" style="margin-top:10px">Precision holds at 100% across all three: a narrower window
-        removes pairs, it never invents them. The receipt clause is what keeps legitimate multi-partial
-        refunds out of this list entirely.</p>
+        <p class="hint" style="margin-top:10px">This table is fixed: it always reports the three windows the
+        report publishes, whatever the slider says. Precision holds at 100% across all three — a narrower
+        window removes pairs, it never invents them. The receipt clause is what keeps legitimate
+        multi-partial refunds out of this list entirely.</p>
       </div>
     </div>
 
@@ -336,21 +341,60 @@ function renderAccuracy() {
     </div>`;
 
   const slider = $("#win"), label = $("#win-label");
-  slider.addEventListener("input", () => {
-    const v = Number(slider.value);
-    label.textContent = v >= 3600 ? (v / 3600).toFixed(1) + " h" : Math.round(v / 60) + " min";
-  });
-  $("#win-run").addEventListener("click", async (e) => {
-    e.target.disabled = true;
-    e.target.textContent = "re-running…";
+  slider.addEventListener("input", () => { label.textContent = fmtWin(Number(slider.value)); });
+  // Fires on release (and on keyboard commit), so dragging alone re-runs.
+  slider.addEventListener("change", () => rerunWindow(Number(slider.value)));
+  $("#win-run").addEventListener("click", () => rerunWindow(Number(slider.value)));
+}
+
+function fmtWin(seconds) {
+  if (seconds >= 86400) return (seconds / 86400).toFixed(seconds % 86400 ? 1 : 0) + " d";
+  if (seconds >= 3600) return (seconds / 3600).toFixed(seconds % 3600 ? 1 : 0) + " h";
+  return Math.round(seconds / 60) + " min";
+}
+
+/* The values that actually move when the window moves. The table above cannot:
+   it always reports the three windows the report publishes. */
+function liveWindowPanel() {
+  const s = state.summary;
+  const score = state.accuracy.codes.find((c) => c.code === "DUPLICATE_SUSPECT");
+  const cell = (label, value, sub, cls) => `
+    <div class="stat ${cls || ""}">
+      <div class="label">${label}</div>
+      <div class="value num" style="font-size:21px">${value}</div>
+      <div class="sub">${sub}</div>
+    </div>`;
+  return `
+    <div style="border:1px solid var(--line);border-radius:8px;padding:14px;background:#fafbfd">
+      <div class="label" style="font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;font-weight:650;margin-bottom:10px">
+        At the current window · ${fmtWin(s.duplicate_window_seconds)}
+      </div>
+      <div class="grid k4">
+        ${cell("Flagged", s.codes.DUPLICATE_SUSPECT || 0, "DUPLICATE_SUSPECT raised", "blue")}
+        ${cell("Recall", score.recall.pct.toFixed(0) + "%", `${score.recall.numerator}/${score.recall.denominator} seeded pairs caught`, score.recall.pct < 100 ? "amber" : "green")}
+        ${cell("Precision", score.precision.pct.toFixed(0) + "%", `${score.precision.numerator}/${score.precision.denominator} flags correct`, "green")}
+        ${cell("Exceptions", s.states.EXCEPTION, `${s.states.CLOSED_MATCHED} closed matched`, "red")}
+      </div>
+    </div>`;
+}
+
+async function rerunWindow(seconds) {
+  const live = $("#win-live"), btn = $("#win-run");
+  if (!live) return;
+  live.innerHTML = `<div class="spinner" style="padding:26px">re-closing 380 refunds at ${fmtWin(seconds)}…</div>`;
+  if (btn) btn.disabled = true;
+  try {
     await api("/api/rerun", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ duplicate_window_seconds: Number(slider.value) }),
+      body: JSON.stringify({ duplicate_window_seconds: seconds }),
     });
     await loadAll();
     renderAccuracy();
-  });
+  } catch (err) {
+    live.innerHTML = `<div class="banner bad"><div class="tick">!</div><div>re-run failed: ${esc(err.message)}</div></div>`;
+    if (btn) btn.disabled = false;
+  }
 }
 
 /* -------------------------------------------------------- money & time */
@@ -469,6 +513,8 @@ async function renderReport() {
 
 /* A deliberately small markdown renderer — the report is generated by us, so it
    only needs headings, tables, fences, lists and inline code. */
+const BLOCK_START = /^(```|#{1,4} |[-*] |\|)/;
+
 function md(src) {
   const lines = src.split("\n");
   const out = [];
@@ -504,8 +550,15 @@ function md(src) {
     } else if (line.trim() === "") {
       i++;
     } else {
-      const buf = [];
-      while (i < lines.length && lines[i].trim() !== "" && !/^[#|`\-*]/.test(lines[i])) buf.push(lines[i++]);
+      /* Always consume the first line before testing the stop condition. A
+         paragraph opening with **bold** starts with "*", and an earlier version
+         treated that as a block marker, consumed nothing, and span-locked the
+         browser — which read as "the report does not build". Advancing first
+         makes a stall impossible regardless of what the stop test says. */
+      const buf = [lines[i++]];
+      while (i < lines.length && lines[i].trim() !== "" && !BLOCK_START.test(lines[i])) {
+        buf.push(lines[i++]);
+      }
       out.push(`<p>${inline(buf.join(" "))}</p>`);
     }
   }

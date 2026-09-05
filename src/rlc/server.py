@@ -410,6 +410,9 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", ctype or "application/octet-stream")
         self.send_header("Content-Length", str(len(body)))
+        # A redeploy must take effect on reload. The assets are a few KB, so
+        # revalidating every time costs nothing and avoids demoing stale JS.
+        self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(body)
 
