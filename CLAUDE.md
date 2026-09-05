@@ -269,7 +269,7 @@ network.
 
 ## 11. What is already done
 
-Steps 1-5 are complete, with 229 tests passing. Run `make test` before changing
+Steps 1-6 are complete, with 258 tests passing. Run `make test` before changing
 anything and again after.
 
 * Step 1: `config.py`, `calendar_utils.py`, `money.py`, `ids.py`, `entities.py`,
@@ -324,7 +324,25 @@ data implies. The 10 deliberately steered cases are still identifiable by their
 variant adds OPEN (101), because an OPEN refund called CLOSED_MATCHED tells a
 controller money landed when it has not.
 
-Next: `explain.py` (§9), then `report.py`.
+* Step 6: `explain.py`, wired into `make close`. Provider is **Google Gemini**
+  (`gemini-3.6-flash`) over `urllib` — no new dependency, per §10. `llm.enabled`
+  is false by default so a clone runs keyless; the key is read from
+  `$GEMINI_API_KEY` and is never stored in the repo.
+
+Two guards sit between the model and the report, and both were earned:
+
+* `verify` — every number in the output must appear in the facts object.
+* `verify_claims` — no "four legs", no "orphan", no assertion that the customer
+  was credited, and anything the engine marked `needs_human_review` must be
+  hedged. Gemini claimed four verified legs on its second live output; the number
+  guard could not see it (see `docs/what-broke.md` entry 11).
+
+A rejected explanation falls back to that code's template, so a model that
+invents something degrades the prose and never the numbers. Template mode is the
+floor, not a degraded mode: `make close` with no API key produces a full
+explanation for every exception, deterministically.
+
+Next: `report.py` (§10).
 
 Engine authors: `data/synthetic/ground_truth.json` exists and is readable. The
 engine must never open it. Only `evaluate.py` may.

@@ -25,7 +25,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
 def cmd_close(args: argparse.Namespace) -> int:
     import json
 
-    from . import attributes, invariants
+    from . import attributes, explain, invariants
     from .engine import close
     from .loader import load_sources
     from .money import format_inr
@@ -103,10 +103,43 @@ def cmd_close(args: argparse.Namespace) -> int:
         for channel, n in channels.items():
             print(f"  {channel:<26} {n:>4}")
 
+    llm_cfg = cfg.llm or {}
+    try:
+        provider = explain.build_provider(cfg)
+    except RuntimeError as exc:
+        print(f"\nexplanations: {exc}")
+        provider = None
+    cap = llm_cfg.get("max_model_calls")
+    report = explain.explain_all(
+        run.verdicts,
+        sources,
+        cfg,
+        provider=provider,
+        max_model_calls=int(cap) if cap else None,
+    )
+    rule = "-" * 28
+    print("\nexplanations (spec §9 — the only place a model is used)")
+    print(f"  {'provider':<26} "
+          f"{(llm_cfg.get('provider', 'none') + ' ' + str(llm_cfg.get('model', ''))) if provider else 'template mode (no API key needed)'}")
+    for source, n in report.counts.items():
+        print(f"  {source:<26}{n:>5}")
+    print(f"  {rule}")
+    print(f"  {'explained':<26}{report.total:>5}   of {run.state_counts['EXCEPTION']} exceptions")
+    if report.provider_errors:
+        print(f"  {'provider errors':<26}{len(report.provider_errors):>5}   "
+              "(each fell back to its template, none were dropped)")
+        print(f"    first: {report.provider_errors[0][:120]}")
+
     out_dir = cfg.path("out_dir")
     out_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "as_of": run.as_of.isoformat(),
+        "explanations": {
+            "counts": report.counts,
+            "provider": llm_cfg.get("model") if provider else "template",
+            "errors": len(report.provider_errors),
+            "items": [e.to_row() for e in report.explanations.values()],
+        },
         "duplicate_window_seconds": run.duplicate_window_seconds,
         "state_counts": counts,
         "exception_codes": run.code_counts,

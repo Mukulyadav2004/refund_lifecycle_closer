@@ -261,3 +261,87 @@ would have surfaced first as inflated `CROSS_PERIOD` counts in the report.
 **Guard.** `test_annotating_twice_changes_nothing` snapshots every verdict row,
 re-annotates and compares. The evaluator's negative-control tests would also
 have caught it, which is how it was found.
+
+---
+
+## 11. The model claimed four verified legs (step 6)
+
+**Symptom.** The second explanation of the first live Gemini run read: *"All four
+settlement legs for the refund have been verified."* That is the one claim
+CLAUDE.md §1 forbids outright — the project claims three legs verified and one
+evidenced, and says so in the repo, the README, the report and the video.
+
+**Cause.** The guard specified in SPEC.md §9 checks that every **number** in the
+output appears in the facts object. "four" is a word. The guard read the
+sentence, found no digits, and passed it.
+
+**Fix.** A second guard, `verify_claims`, with three forbidden patterns — any
+claim of four legs, the banned word "orphan", and any assertion that the customer
+was credited (an ARN evidences a bank reference, not a credit) — plus a positive
+requirement: when the engine set `needs_human_review`, the prose must contain a
+hedging word, so a `DUPLICATE_SUSPECT` can never be stated as a fact. The system
+prompt now states all four rules as well, so the guard is a backstop rather than
+the only line.
+
+**Lesson.** "Every number must appear in the facts" is a good rule that reads as
+a complete one. It is not: the expensive errors in this domain are claims, not
+figures. A model that says *four legs verified* has said something false about
+the product in a sentence containing no numbers at all.
+
+**Guard.** `test_forbidden_claims_are_rejected` covers all four patterns, and
+`test_every_template_passes_its_own_guards` holds the templates to the same bar
+the model is held to.
+
+## 12. The number guard could be erased into passing anything
+
+**Symptom.** While writing the test for it, `"The customer should receive the
+money within 3 to 5 business days"` was rejected as expected — but
+`"999.99 rupees"` passed.
+
+**Cause.** The guard removed every known literal from the text and then looked
+for surviving digits. Among the known literals were the components of an ISO
+date, including the bare `"9"` from `2026-09-04`. Erasing `"9"` everywhere turned
+`999.99` into `.` and nothing was left to object to. Any invented figure made
+only of digits that appear somewhere in the facts would have passed.
+
+**Fix.** Whole-token matching instead of erasure. Identifiers and ISO dates are
+removed first — so a digit inside `rfnd_QfW822jZGfgbhJ` is never read as an
+amount — and every remaining number token must *equal* a permitted figure. The
+facts object now also carries the paise integer beside each formatted rupee
+string, so the permitted set covers both renderings.
+
+**Lesson.** A guard built from "remove what is allowed, object to the remainder"
+gets weaker with every literal you allow. One built from "tokenise, then check
+each token" gets stronger.
+
+**Guard.** `test_an_invented_number_is_rejected` uses the 999.99 case that
+slipped, and `test_a_digit_inside_an_identifier_is_not_a_stray_number` pins the
+reason erasure was there in the first place.
+
+## 13. Gemini 2.5 Flash is not callable on a new key, and thinking truncated the JSON
+
+**Symptom.** Two failures on the first live call. `models/gemini-2.5-flash`
+returned `404 ... no longer available to new users`. After switching to the model
+the API itself recommended, responses came back truncated mid-string:
+`{"explanation": "Refund rfnd_QfW822jZGfgbhJ of ₹566.00 for payment pay_g`.
+
+**Cause.** Two unrelated things. The 2.5 model is closed to new keys — the key
+authenticates fine, the model just is not there. And Gemini 3.x reasons before
+answering, charging those tokens against `maxOutputTokens`: a request with a
+1024-token cap spent 391 on reasoning and ran out mid-JSON.
+
+**Fix.** `gemini-3.6-flash`, with `thinkingConfig.thinkingLevel: "low"` — which
+takes the reasoning tokens to zero — and a 2048-token cap. Restating
+already-classified facts in three sentences requires no deliberation.
+`thinkingBudget: 0`, the 2.5-era control, returns a 400 on this model.
+
+**Also.** The free-tier key returns `429` after roughly a dozen calls, so 35 of
+49 explanations fell back on the first full run. That is the designed behaviour
+rather than a defect: every record still got an explanation, none were dropped,
+and the count of model-written versus template output is printed. Exceptions are
+explained in exposure order and `llm.max_model_calls` caps how many reach the
+model, so when quota runs out it runs out on the cheapest findings.
+
+**Guard.** `test_quota_exhaustion_still_explains_every_record` and
+`test_capping_model_calls_spends_them_on_the_biggest_exposures`. The empty-response
+path raises a message naming `maxOutputTokens` rather than failing silently.

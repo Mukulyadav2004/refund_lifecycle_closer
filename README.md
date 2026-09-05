@@ -31,10 +31,10 @@ repo never claims a four-leg lifecycle.
 | 3 Loader, invariants, closure engine | `loader.py` `invariants.py` `engine.py` | **done — all 380 seeded labels reproduced** |
 | 4 Leakage, timing, leg evidence | `attributes.py` | **done — 236 bps leakage, control total ties** |
 | 5 Metrics vs ground truth | `evaluate.py` | **done — confusion matrix, per-code P/R/F1, sensitivity** |
-| 6 Explanation layer | `explain.py` | to build |
+| 6 Explanation layer | `explain.py` | **done — Gemini + template fallback, two output guards** |
 | 7 Report writer | `report.py` | to build |
 
-229 tests passing. `SPEC.md` is the algorithm. `CLAUDE.md` is the working contract — read it before
+258 tests passing. `SPEC.md` is the algorithm. `CLAUDE.md` is the working contract — read it before
 writing code.
 
 ## Run

@@ -82,6 +82,21 @@ paths:
   holidays: data/bank_holidays_IN_2026.json
 
 llm:
-  enabled: false                  # template mode works with no API key
-  model: claude-sonnet-4-6
-  max_tokens: 300
+  # Template mode is the default: the demo must run with no API key at all.
+  # Set enabled: true and export the key named below to use the model.
+  enabled: false
+  provider: gemini
+  # gemini-2.5-flash returns 404 "no longer available to new users" on a new key;
+  # the API itself points at 3.6-flash, which is what this was tested against.
+  model: gemini-3.6-flash
+  api_key_env: GEMINI_API_KEY     # the key is never stored in this repo
+  # Gemini 3.x reasons before answering and charges those tokens against
+  # maxOutputTokens. Restating already-classified facts needs no deliberation,
+  # so thinking is held low and the cap is generous enough not to truncate JSON.
+  thinking_level: low
+  max_tokens: 2048
+  timeout_seconds: 30
+  max_retries: 2                  # free-tier keys return 429 well before 49 calls
+  # Explain the highest-exposure exceptions with the model and template the rest.
+  # null means all of them. Every record gets an explanation either way.
+  max_model_calls: 12
