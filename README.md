@@ -5,6 +5,8 @@ Razorpay AI Buildathon — AI Finance Controller track.
 Closes out a month of refunds and tells you which ones actually finished. I built
 it because "processed" doesn't mean what I assumed it meant.
 
+video explanation - https://www.loom.com/share/288489d300694c08b356802e55693480
+
 ## The thing this is about
 
 Razorpay marks a refund `processed` when the gateway is done with it. That is not
